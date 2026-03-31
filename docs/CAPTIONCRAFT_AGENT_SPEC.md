@@ -70,7 +70,7 @@ dependencies:
   chewie: ^1.8.3
 
   # FFmpeg
-  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+  ffmpeg_kit_flutter_new: ^4.1.0
 
   # File picking
   file_picker: ^8.1.2

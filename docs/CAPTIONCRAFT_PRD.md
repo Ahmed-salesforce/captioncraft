@@ -207,7 +207,7 @@ captions:       List<CaptionSegment>
 | Local DB / Storage | Hive 2 | Fast, no-SQL, offline, Flutter-native |
 | Video Playback | video_player + chewie | Standard Flutter video |
 | Transcription | whisper.cpp via FFI (dart:ffi) | On-device, C library, best quality |
-| Video Export | ffmpeg_kit_flutter | Mature, full FFmpeg on mobile |
+| Video Export | ffmpeg_kit_flutter_new | Community fork of retired ffmpeg_kit, updated bindings |
 | File Picking | file_picker | Gallery + files, all platforms |
 | Color Picker | flutter_colorpicker | Simple, MIT licensed |
 | Font Rendering | google_fonts (bundled subset) | Curated, offline safe |
