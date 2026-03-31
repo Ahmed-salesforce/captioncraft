@@ -8,6 +8,7 @@ import '../../core/providers/project_provider.dart';
 import '../../shared/theme/app_colors.dart';
 import '../../shared/theme/app_typography.dart';
 import 'widgets/caption_list.dart';
+import '../export/export_sheet.dart';
 import 'widgets/global_style_panel.dart';
 import 'widgets/timeline_strip.dart';
 import 'widgets/video_preview.dart';
@@ -255,9 +256,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
               IconButton(
                 icon: const Icon(Icons.ios_share),
                 tooltip: 'Export',
-                onPressed: () {
-                  // Phase 5: ExportSheet.show(context)
-                },
+                onPressed: () => ExportSheet.show(context),
               ),
             ],
           ),
