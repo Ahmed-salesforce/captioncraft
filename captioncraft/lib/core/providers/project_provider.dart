@@ -193,22 +193,37 @@ class CaptionNotifier extends StateNotifier<List<CaptionSegment>> {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
+    _ref.read(saveStatusProvider.notifier).state = SaveStatus.saving;
     _saveTimer = Timer(const Duration(milliseconds: 500), () {
       _persistToProject();
     });
   }
 
-  void _persistToProject() {
+  Future<void> _persistToProject() async {
     final project = _ref.read(currentProjectProvider);
     if (project == null) return;
     final updated = project.copyWith(captions: state);
     _ref.read(currentProjectProvider.notifier).updateProject(updated);
-    _ref.read(projectServiceProvider).saveProject(updated);
+    await _ref.read(projectServiceProvider).saveProject(updated);
+    _ref.read(saveStatusProvider.notifier).state = SaveStatus.saved;
+    _savedResetTimer?.cancel();
+    _savedResetTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        _ref.read(saveStatusProvider.notifier).state = SaveStatus.idle;
+      }
+    });
   }
+
+  Timer? _savedResetTimer;
 
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _savedResetTimer?.cancel();
     super.dispose();
   }
 }
+
+enum SaveStatus { idle, saving, saved }
+
+final saveStatusProvider = StateProvider<SaveStatus>((ref) => SaveStatus.idle);

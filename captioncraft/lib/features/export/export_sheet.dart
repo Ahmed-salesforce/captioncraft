@@ -1,5 +1,9 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/models/project.dart';
@@ -34,6 +38,7 @@ class ExportSheet extends ConsumerStatefulWidget {
 class _ExportSheetState extends ConsumerState<ExportSheet> {
   _ExportFormat _format = _ExportFormat.video;
   ExportQuality _quality = ExportQuality.p1080;
+  int? _lowStorageMb;
 
   @override
   void initState() {
@@ -41,6 +46,20 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(exportProvider.notifier).reset();
     });
+    _checkStorage();
+  }
+
+  Future<void> _checkStorage() async {
+    if (kIsWeb) return;
+    try {
+      final tmp = await getTemporaryDirectory();
+      final stat = await FileStat.stat(tmp.path);
+      if (stat.type == FileSystemEntityType.notFound) {
+        if (mounted) setState(() => _lowStorageMb = 0);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _lowStorageMb = 0);
+    }
   }
 
   void _startExport() {
@@ -122,7 +141,7 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
   Widget _buildBody(ExportState exportState, Project? project) {
     switch (exportState.status) {
       case ExportStatus.idle:
-        return _buildIdleState();
+        return _buildIdleState(project);
       case ExportStatus.exporting:
         return _buildExportingState(exportState);
       case ExportStatus.done:
@@ -132,12 +151,36 @@ class _ExportSheetState extends ConsumerState<ExportSheet> {
     }
   }
 
-  Widget _buildIdleState() {
+  Widget _buildIdleState(Project? project) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_lowStorageMb != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0x33FFDD57),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.accent.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.storage, color: AppColors.accent, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Low storage: ${_lowStorageMb}MB free. Export may fail.',
+                        style: AppTypography.caption.copyWith(color: AppColors.accent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Text('Format', style: AppTypography.label),
           const SizedBox(height: 8),
           _buildFormatSelector(),

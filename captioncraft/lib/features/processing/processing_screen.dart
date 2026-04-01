@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/providers/project_provider.dart';
+import '../../core/services/ffmpeg_service.dart';
 import '../../core/services/transcription_service.dart';
 import '../../core/utils/segment_grouper.dart';
 import '../../shared/theme/app_colors.dart';
@@ -42,10 +43,15 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
 
       final captions = groupSegments(rawSegments);
 
-      // Estimate duration from last caption end or default to 30s
-      final durationMs = captions.isNotEmpty
-          ? captions.last.endMs + 500
-          : 30000;
+      if (captions.isEmpty) {
+        if (!mounted) return;
+        final proceed = await _showZeroSegmentsDialog();
+        if (!proceed || !mounted) return;
+        await _createEmptyProjectAndNavigate();
+        return;
+      }
+
+      final durationMs = captions.last.endMs + 500;
 
       final notifier = ref.read(projectListProvider.notifier);
       final projectId = await notifier.createProject(
@@ -53,7 +59,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
         durationMs: durationMs,
       );
 
-      // Save captions to the project
       final service = ref.read(projectServiceProvider);
       final project = await service.loadProject(projectId);
       if (project != null) {
@@ -62,10 +67,85 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
 
       if (!mounted) return;
       context.go('/editor/$projectId');
+    } on FFmpegException catch (e) {
+      if (_cancelled || !mounted) return;
+      final isNoAudio = e.message.contains('Audio extraction failed');
+      if (isNoAudio) {
+        final proceed = await _showNoAudioDialog();
+        if (proceed && mounted) {
+          await _createEmptyProjectAndNavigate();
+        }
+      } else {
+        setState(() => _error = e.toString());
+      }
     } catch (e) {
       if (_cancelled || !mounted) return;
       setState(() => _error = e.toString());
     }
+  }
+
+  Future<void> _createEmptyProjectAndNavigate() async {
+    final notifier = ref.read(projectListProvider.notifier);
+    final projectId = await notifier.createProject(
+      videoPath: widget.videoPath,
+      durationMs: 30000,
+    );
+    if (!mounted) return;
+    context.go('/editor/$projectId');
+  }
+
+  Future<bool> _showNoAudioDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface2,
+        title: Text('No audio track found', style: AppTypography.title),
+        content: Text(
+          'This video has no audio to transcribe.',
+          style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Go Back', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Add captions manually', style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (result == false && mounted) context.go('/');
+    return result ?? false;
+  }
+
+  Future<bool> _showZeroSegmentsDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface2,
+        title: Text("Couldn't detect speech", style: AppTypography.title),
+        content: Text(
+          'No speech was found in the audio.',
+          style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Go Back', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Continue with empty captions', style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (result == false && mounted) context.go('/');
+    return result ?? false;
   }
 
   void _cancel() {

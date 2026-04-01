@@ -1,6 +1,12 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 
 import 'ffmpeg_service.dart';
+import 'whisper_binding.dart' if (dart.library.html) 'whisper_binding_stub.dart';
 
 class RawSegment {
   final int startMs;
@@ -17,12 +23,6 @@ class RawSegment {
 class TranscriptionService {
   final FFmpegService _ffmpeg = FFmpegService();
 
-  /// Transcribes audio from [videoPath] and returns raw segments.
-  ///
-  /// On mobile: extracts audio via FFmpeg, then runs mocked Whisper.
-  /// On web: returns sample segments directly.
-  ///
-  /// [onProgress] reports 0.0–1.0 at each pipeline milestone.
   Future<List<RawSegment>> transcribe(
     String videoPath, {
     required void Function(double progress) onProgress,
@@ -31,45 +31,83 @@ class TranscriptionService {
       return _runMocked(onProgress);
     }
 
-    // Step 1: Extract audio
     onProgress(0.05);
     String wavPath = '';
     try {
       wavPath = await _ffmpeg.extractAudio(videoPath);
       onProgress(0.10);
 
-      // TODO: Real whisper.cpp FFI — load model, run inference on wavPath
-      // For now, use mocked transcription output.
-      final segments = await _runMocked(onProgress);
+      final modelPath = await _ensureModelCopied();
+      onProgress(0.12);
 
+      final segments = await runWhisperInIsolate(
+        modelPath,
+        wavPath,
+        onProgress,
+      );
+
+      onProgress(0.95);
+      await Future.delayed(const Duration(milliseconds: 100));
+      onProgress(1.0);
       return segments;
     } finally {
       await _ffmpeg.cleanUp(wavPath);
     }
   }
 
-  /// Mocked transcription that simulates Whisper output with sample segments.
+  Future<String> _ensureModelCopied() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final modelFile = File('${docsDir.path}/ggml-tiny.bin');
+    if (await modelFile.exists()) return modelFile.path;
+
+    final data = await rootBundle.load('assets/models/ggml-tiny.bin');
+    await modelFile.writeAsBytes(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      flush: true,
+    );
+    return modelFile.path;
+  }
+
+  /// Parse a 16-bit PCM WAV file into Float32List (normalized to -1..1).
+  static Float32List loadWavSamples(String wavPath) {
+    final file = File(wavPath);
+    final bytes = file.readAsBytesSync();
+    final data = ByteData.sublistView(Uint8List.fromList(bytes));
+
+    var offset = 12;
+    while (offset < bytes.length - 8) {
+      final chunkId = String.fromCharCodes(bytes.sublist(offset, offset + 4));
+      final chunkSize = data.getUint32(offset + 4, Endian.little);
+      if (chunkId == 'data') {
+        offset += 8;
+        final numSamples = chunkSize ~/ 2;
+        final samples = Float32List(numSamples);
+        for (var i = 0; i < numSamples; i++) {
+          final sample = data.getInt16(offset + i * 2, Endian.little);
+          samples[i] = sample / 32768.0;
+        }
+        return samples;
+      }
+      offset += 8 + chunkSize;
+    }
+    throw Exception('WAV data chunk not found');
+  }
+
   Future<List<RawSegment>> _runMocked(
     void Function(double progress) onProgress,
   ) async {
     onProgress(0.15);
     await Future.delayed(const Duration(milliseconds: 600));
-
     onProgress(0.30);
     await Future.delayed(const Duration(milliseconds: 500));
-
     onProgress(0.50);
     await Future.delayed(const Duration(milliseconds: 500));
-
     onProgress(0.70);
     await Future.delayed(const Duration(milliseconds: 400));
-
     onProgress(0.85);
     await Future.delayed(const Duration(milliseconds: 300));
-
     onProgress(0.95);
     await Future.delayed(const Duration(milliseconds: 200));
-
     onProgress(1.0);
 
     return const [

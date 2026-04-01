@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -70,10 +71,14 @@ class ExportService {
           '-i "${project.videoPath}" -vf "$vf" -c:a copy -movflags +faststart -y "$outputPath"';
 
       final totalMs = project.videoDurationMs;
+      final completer = Completer<ReturnCode?>();
 
-      final session = await FFmpegKit.executeAsync(
+      await FFmpegKit.executeAsync(
         command,
-        (session) async {},
+        (session) async {
+          final code = await session.getReturnCode();
+          if (!completer.isCompleted) completer.complete(code);
+        },
         (log) {},
         (Statistics statistics) {
           if (totalMs > 0) {
@@ -84,14 +89,13 @@ class ExportService {
         },
       );
 
-      final returnCode = await session.getReturnCode();
+      final returnCode = await completer.future;
 
       if (!ReturnCode.isSuccess(returnCode)) {
-        final logs = await session.getAllLogsAsString();
-        throw ExportException(
-          'Video export failed (code ${returnCode?.getValue()})',
-          logs ?? '',
-        );
+        final errMsg = returnCode == null
+            ? 'Video export failed (FFmpeg process was killed or crashed)'
+            : 'Video export failed (code ${returnCode.getValue()})';
+        throw ExportException(errMsg, '');
       }
 
       onProgress(1.0);
