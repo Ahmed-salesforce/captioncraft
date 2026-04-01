@@ -33,6 +33,8 @@ target_include_directories(whisper PRIVATE
 
 target_compile_definitions(whisper PRIVATE
     GGML_USE_CPU
+    GGML_VERSION="0.9.8"
+    GGML_COMMIT=""
 )
 
 target_compile_options(whisper PRIVATE
